@@ -38,6 +38,7 @@ module Ayumu.AyDoc
 --- Imports {{{
 
 import Data.List ( intersect, insert, find, inits, isPrefixOf, nub, sortBy )
+import qualified Data.Foldable as F
 import Data.Maybe ( maybeToList, mapMaybe )
 import Data.Monoid
 import Control.Monad.State ( StateT, MonadState, put, get, lift )
@@ -64,18 +65,53 @@ import Data.Graph.Inductive.Tree ( Gr )
 
 -- }}}
  --------------------------------------------------------------------------
- -- Graph-only stuff {{{
+ -- Branches and Commits {{{
  --------------------------------------------------------------------------
 
--- | Gates are edge labels.
+-- | Gates are edge labels. Used to identify a set of nodes as belonging to
+-- a particular commit.
 type Gate = Int
-
-instance Monoid Gate where
-  mempty  = 0
-  mappend = (+)
-
-
 type Edge = LEdge Gate
+
+-- Keep all the branches in a zipper, and all the commits in a branch
+-- also in a zipper.
+type Zipper a = ([a], a, [a])
+type Branches = Zipper Branch
+type Commits  = Zipper Gate
+
+
+-- Zipper utility functions
+zHeadwards, zTailwards, zFirst  :: Zipper a -> Zipper a
+zHeadwards l@([], _,  _)        = l
+zHeadwards   (hs,m,  ts)        = (init hs , last hs, m:ts)
+zTailwards l@(_, _,  [])        = l
+zTailwards   (hs,m,t:ts)        = (hs ++ [m],    t   , ts  )
+zFirst     z@([],_,  _ )        = z
+zFirst       (h:hs,m,ts)        = ( [], h , hs ++ [m] ++ ts)
+
+zCursor               :: Zipper a -> a
+zCursor (_, m, _)     = m
+
+-- Inserts an element at the head of the zipper and focuses on that
+-- element.
+zInsert               :: a -> Zipper a -> Zipper a
+zInsert a (hs, m, ts) = zFirst (a:hs, m, ts)
+
+-- Return all elements at or to the right of a zipper.
+zUntil               :: Zipper a -> [a]
+zUntil (_, m, ts)    =  m:ts
+
+data Branch = Branch {
+    _name :: String ,
+    _commits :: Commits
+} deriving (Show, Read)
+
+L.makeLenses ''Branch
+
+ --}}}
+ --------------------------------------------------------------------------
+ -- Graph  {{{
+ --------------------------------------------------------------------------
 
 type Gr' a = Gr a Gate
 
@@ -122,20 +158,20 @@ getEdges' :: (Graph g) =>
         -> g a Gate          -- ^ the graph to operate on
         -> [Edge]
 getEdges' n gts g
-        | null (suc g n)  = [                              ]
+        | null (suc g n)  = [   ]
         | otherwise       = next:getEdges' (snd' next) gts g
-          where snd' (_,x,_) = x
-                intersect'   = filter (\(_,_,x) -> x `elem` gts) (out g n)
-                next         = head intersect'
+  where snd' (_,x,_) = x
+        intersect'   = filter (\(_,_,x) -> x `elem` gts) (out g n)
+        next         = head intersect'
 
 
 -- | Return whatever nodes are needed from an original graph so that a list
 -- of edges can actually be made a graph.
 fillNodes      :: (Graph gr) => [Edge] -> gr a Gate -> [LNode a]
 fillNodes es g =
-    let ss = map (\(x,_,_) -> x) es
-        ts = map (\(_,x,_) -> x)  es
-        ns = nub (ss ++ ts)
+    let ss   =   map (\(x,_,_) -> x) es
+        ts   =   map (\(_,x,_) -> x)  es
+        ns   =   nub (ss ++ ts)
     in filter (\(x,_) -> x `elem` ns) (labNodes g)
 
 
@@ -145,40 +181,28 @@ fillNodes es g =
 -- the preferred turns.
 getWalk'         :: (DynGraph g) => Node -> [Gate] -> g a Gate -> g a Gate
 getWalk' n bs gr =
-    let es = getEdges' n bs gr
-        ns = fillNodes es gr
+    let es   =   getEdges' n bs gr
+        ns   =   fillNodes es gr
     in mkGraph ns es
+
+-- | Make and connect walk
+addLinesr   :: DynGraph g => [a] -> Node -> Node -> Gate -> g a Gate -> g a Gate
+addLinesr   = join . (addWalk .) . mkWalk
+
 -- }}}
  --------------------------------------------------------------------------
  -- AyDoc {{{
+ -- Functions and types specific to the AyDoc monad
  --------------------------------------------------------------------------
 
--- | Keep all the branches in a zipper
-type Zipper a = ([a], a, [a])
-type Branches = Zipper Branch
-type Commits  = Zipper Gate
-
-data Branch = Branch {
-    _name :: String ,
-    _commits :: Commits
-} deriving (Show, Read)
-
-L.makeLenses ''Branch
-
-
-data Mergeable = Only Branch | Mult Branch Mergeable
-
---               base, local, remote
-type Conflict = (Gate, Gate,  Gate)
-
-
--- | Is there a conflict in the merge?
-data ConfStatus = Conf | NoConf deriving (Show, Read)
+----- Types ---------------------------------------------------------------
 
 -- | DState keeps the information about revision history.
 -- TODO: It might be best to split this up so (revNo on one side, everything
 -- else on the other) so that state can be kept in Writer (graph, revno),
 -- Reader (file, cfgs), and State (branches).
+-- TODO: Using lenses no longer makes much sense, since types become much
+-- less perspicuous. Switch out of them.
 data DState   = DState {
     _revNo     :: Gate ,                           -- ^ latest rev1
     _file      :: FilePath ,                       -- ^ file we're working on
@@ -194,30 +218,13 @@ data AyGr a = AyGr {
 L.makeLenses ''AyGr
 L.makeLenses ''DState
 
-initialDState :: AyGr String
-initialDState = AyGr {
-    _graph = mkGraph [(0,"start"), (1,"end"), (2, "post-end")]
-                      [(0, 1, 0), (1, 2, 0)] ,
-    _revision = DState {
-        _revNo = 0 ,
-        _file = "/Users/jkarni/smallindproj/ayumu/data/Example.txt" ,
-        _branches =  (
-                    [],
-                    Branch {
-                        _name = "master" ,
-                        _commits = ([], 0, [])
-                    },
-                    []
-        )
-    }
-}
 
-initial   :: FilePath -> AyGr String
-initial f = L.set (revision.file) f initialDState
--- }}}
+-- | DState constructor. Given a filepath, return an initial state for AyDoc.
+initial     :: FilePath -> AyGr String
+initial f   = L.set (revision.file) f initialDState
+
  --------------------------------------------------------------------------
- -- Exportable AyDoc  {{{
- --------------------------------------------------------------------------
+
 
 -- | AyDoc itself: A state monad over IO that keeps both the document graph
 -- and additional revision information.
@@ -236,12 +243,10 @@ linesToNode a    = do
 cdLines   :: (Show a, Monoid a) => AyDoc a [a]
 cdLines   = do
      w <- curDoc'
-     {-b <- L.view branches.name-}
-     {-c <- L.view branches.commits-}
      let ns = iterateSuc 0 w
      let ls = mapMaybe (lab w) ns
      (liftIO . putStrLn) (show $ mconcat ls)
-     return ls 
+     return ls
 
 
 -- | Return the walk corresponding to the current revision - i.e., the
@@ -252,24 +257,27 @@ curDoc'   = do
     gr <- L.use graph
     return $ getWalk' 0 (zUntil cb) gr
 
--- | Make and connect walk
-addLinesr   :: DynGraph g => [a] -> Node -> Node -> Gate -> g a Gate -> g a Gate
-addLinesr   = join . (addWalk .) . mkWalk
 
 addLines         :: Show a => [a] -> Node -> Node -> AyDoc a ()
 addLines a f t   = do
-    r  <- revision.revNo L.<+= 1
+    r  <- L.use (revision.revNo)
     gr <- L.use graph
     graph L..= addLinesr a f t r gr
     return ()
 
 delLines       :: Node -> Node -> AyDoc a ()
 delLines f t   = do
-    r <- revision.revNo L.<+= 1
+    r <- L.use (revision.revNo)
     graph L.%= delBetween r f t
     return ()
 
+-- | Get the current list of commits. This involves selecting the right
+-- (current) branch and the right commit in that branch.
+getCommit :: AyDoc a [Gate]
+getCommit =  (L.use (revision.branches.L._2.commits)) >>= return . zUntil
+
 --- }}}
+
  --------------------------------------------------------------------------
  -- Utils {{{
  --------------------------------------------------------------------------
@@ -280,28 +288,25 @@ iterateSuc x g
     | otherwise       = next:iterateSuc next g
            where next = head $ suc g x
 
--- Zipper utility functions
-zHeadwards, zTailwards    :: Zipper a -> Zipper a
-zHeadwards l@([], _,  _)  = l
-zHeadwards  (hs, m,  ts)  = (init hs , last hs, m:ts)
-zTailwards l@(_, _,  [])  = l
-zTailwards (hs, m, t:ts)  = (hs ++ [m],    t   , ts  )
 
-zCursor               :: Zipper a -> a
-zCursor (_, m, _)     = m
+initialDState :: AyGr String
+initialDState = AyGr {
+    _graph      =   mkGraph [(0,"start"), (1,"end") ]
+                        [(0, 1, 0), (1, 2, 0)] ,
+    _revision   =   DState {
+          _revNo    =   0  ,
+          _file     =   "" ,
+          _branches =  ( 
+                            [] ,
+                            Branch {
+                                _name = "master" ,
+                                _commits = ([], 0, [])
+                                   },
+                            []
+                        )
+                           }
+                     }
 
--- Inserts a branch at the head of the zipper
-zInsert               :: a -> Zipper a -> Zipper a
-zInsert a (hs, m, ts) = (a:hs, m, ts)
-
-zUntil               :: Zipper a -> [a]
-zUntil (_, m, ts)    =  m:ts
-
--- | Get the current list of commits. This involves selecting the right
--- (current) branch and the right commit in that branch.
-getCommit :: AyDoc a [Gate]
-getCommit =  (L.use (revision.branches.L._2.commits)) >>= return . zUntil
- 
 
 --- }}}
  --------------------------------------------------------------------------
