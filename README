@@ -1,3 +1,27 @@
-* Ayumu
+# Ayumu
 
 Lightweight, flexible VCS
+
+Still in its earliest infancy, check back later.
+
+## Codemap
+
+Ayumu represents the revision history of a file as a (node- and edge-labeled)
+DAG (poset, lattice, Boolean algebra - take your pick). Nodes labels are
+parametrized, and can represent lines, but also other type with a
+lines/unlines-like pair of functions.
+
+The core of all that happens in AyDoc.hs. Diffs, currently not much more than
+Data.Algorithm.Diff, show up in AyDiff.hs. Main.hs should be doing optparsing
+and the like, but for these early stages while everything still happens in
+memory, just has a ghci-able interactive main.
+
+## Roadmap
+
++ Tests!
++ Serialization of AyDoc
++ Non-interactive option (FS)
++ DB support
++ Demos
+
+
