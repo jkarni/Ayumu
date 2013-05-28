@@ -23,26 +23,16 @@
 
 --- Exports {{{
 module Ayumu.AyDoc
-    {-( AyDoc,-}
-      {-revision,-}
-      {-meet,-}
-      {-file,-}
-      {-delLines,-}
-      {-cdLines,-}
-      {-addLines,-}
-      {-initialDState ) -}
       where
 
 --- }}}
 
 --- Imports {{{
 
-import Data.List ( intersect, insert, find, inits, isPrefixOf, nub, sortBy )
-import qualified Data.Foldable as F
-import Data.Maybe ( maybeToList, mapMaybe )
+import Data.List ( nub)
+import Data.Maybe ( mapMaybe )
 import Data.Monoid
-import Control.Monad.State ( StateT, MonadState, put, get, lift )
-import Control.Monad ( join, liftM2, liftM )
+import Control.Monad.State ( StateT )
 import Control.Monad.IO.Class ( MonadIO, liftIO )
 import qualified Control.Lens as L
 import Data.Graph.Inductive.Graph
@@ -50,10 +40,8 @@ import Data.Graph.Inductive.Graph
       LNode,
       LEdge,
       Graph(labEdges, empty, labNodes, mkGraph, noNodes),
-      gelem,
       nodes,
       DynGraph(..),
-      Context,
       suc,
       out,
       lab,
