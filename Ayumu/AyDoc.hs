@@ -64,7 +64,10 @@ type Edge = LEdge Gate
 -- Keep all the branches in a zipper, and all the commits in a branch
 -- also in a zipper.
 type Zipper a = ([a], a, [a])
+-- | Branches is a list-zipper of "branch"es
 type Branches = Zipper Branch
+-- | An individual branch is a name and a zipper-list of commits. This is
+-- the zipper
 type Commits  = Zipper Gate
 
 
@@ -175,10 +178,10 @@ getWalk' n bs gr =
 
 -- | Make and connect walk
 addLinesr   :: DynGraph g => [a] -> Node -> Node -> Node -> Gate -> g a Gate -> g a Gate
-addLinesr a f t s l g = 
-        let nses = mkWalk a s 
+addLinesr a f t s l g =
+        let nses = mkWalk a s
         in addWalk nses f t l g
-            
+
 
 -- }}}
  --------------------------------------------------------------------------
@@ -222,13 +225,6 @@ initial f   = L.set (revision.file) f initialDState
 type AyDoc a o = StateT (AyGr a) IO o
 
 
--- | Given a list of integers representing the lines in the current work
--- tree, 1 being the first,
-linesToNode      :: [Int] -> AyDoc a [Node]
-linesToNode a    = do
-    w <- curDoc'
-    let ns = (iterate . (head .) . suc) w 0
-    return $  map (ns !!) a
 
 -- | Return the work tree as a list of lines
 cdLines   :: (Show a, Monoid a) => AyDoc a [a]
@@ -299,6 +295,14 @@ initialDState = AyGr {
                            }
                      }
 
+-- Given a list of integers representing the lines in the current work
+-- tree, 1 being the first, return the list of nodes that correspond to
+-- those lines.
+_linesToNode      :: [Int] -> AyDoc a [Node]
+_linesToNode a    = do
+    w <- curDoc'
+    let ns = (iterate . (head .) . suc) w 0
+    return $  map (ns !!) a
 
 --- }}}
  --------------------------------------------------------------------------

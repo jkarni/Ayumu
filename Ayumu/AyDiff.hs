@@ -25,6 +25,10 @@ import Data.Maybe ( listToMaybe )
 import Ayumu.AyDoc
 
 -- }}}
+ --------------------------------------------------------------------------
+ -- Exported {{{
+ --------------------------------------------------------------------------
+
 -- | (Add and) commit changes to AyDoc
 commit' :: AyDoc String ()
 commit' = do
@@ -38,15 +42,40 @@ commit' = do
         _ <- addDiff (getGroupedDiff (cur) ("start":fs ++ ["end"]))
         return ()
 
+ --}}}
+ --------------------------------------------------------------------------
+ -- Internal {{{
+ --------------------------------------------------------------------------
+
 -- | Add a list of diffs to AyDoc over the current walk.
 addDiff        :: Show a => [Diff [a]] -> AyDoc a ()
 addDiff []     = return ()
 addDiff xs     = addDiff' 0 xs
 
 
+-- TODO: check that recursive calls are getting passed the right node.
+-- TODO: break this up - it gives me headaches.
+addDiff'          :: Show a => Node -> [Diff [a]] -> AyDoc a ()
+addDiff' _ []     = return ()
+addDiff' n ds     =
+        let (x,xs)   = break isBoth ds
+            (fs,sns) = partition isFirst x
+            f        = listToMaybe $ map diffContent fs
+            s        = listToMaybe $ map diffContent sns
+            (bts,ms) = span isBoth xs
+            --   this really needs to be fixed - remove head vvvv
+            iter m   = addDiff' (m + (length $ diffContent $ head bts)) ms
+            jnext a  = n + length a + 1
+        in case (f, s) of
+           (Just a, Just b)   -> addLines b n (jnext a)  << iter (jnext a)
+           (Just a, Nothing)  -> delLines n (jnext a)    << iter (jnext a)
+           (Nothing, Just b)  -> addLines b n (n + 1)    << iter (n + 1)
+           (Nothing, Nothing) -> iter (n + 1)
+            
+ ---}}}
 
  --------------------------------------------------------------------------
- -- Utilities
+ -- Utilities {{{
  --
  --------------------------------------------------------------------------
 
@@ -67,20 +96,5 @@ diffContent (Both a _) = a
 (<<) :: Monad m => m b -> m a -> m b
 a << b = b >> a
 
--- TODO: check that recursive calls are getting passed the right node.
-addDiff'          :: Show a => Node -> [Diff [a]] -> AyDoc a ()
-addDiff' _ []     = return ()
-addDiff' n ds     =
-        let (x,xs)   = break isBoth ds
-            (fs,sns) = partition isFirst x
-            f        = listToMaybe $ map diffContent fs
-            s        = listToMaybe $ map diffContent sns
-            (bts,ms) = span isBoth xs
-            --   this really needs to be fixed - remove head vvvv
-            iter m   = addDiff' (m + (length $ diffContent $ head bts)) ms
-            jnext a  = n + length a + 1
-        in case (f, s) of
-           (Just a, Just b)   -> addLines b n (jnext a)  << iter (jnext a)
-           (Just a, Nothing)  -> delLines n (jnext a)    << iter (jnext a)
-           (Nothing, Just b)  -> addLines b n (n + 1)    << iter (n + 1)
-           (Nothing, Nothing) -> iter (n + 1)
+-- }}}
+
