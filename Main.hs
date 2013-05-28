@@ -24,11 +24,8 @@ module Main where
 import Ayumu.AyDoc
 import Ayumu.AyDiff
 import Control.Monad.IO.Class ( MonadIO(liftIO) )
-import Control.Monad.State ( runStateT, execStateT, liftM )
-import Control.Monad ( forever, void )
-import System.Environment ( getArgs )
-import Control.Lens as L
-import Options.Applicative
+import Control.Monad.State ( runStateT )
+import Control.Monad ( void )
 
 -- }}}
  --------------------------------------------------------------------------
@@ -37,7 +34,7 @@ import Options.Applicative
 main :: IO ()
 main = do
           putStrLn "Welcome."
-          x <- runStateT mainloop initialDState
+          x <- runStateT mainloop (initial "data/Example.txt")
           putStrLn "Done."
           print x
           return ()
@@ -64,7 +61,6 @@ processCmd = do
                      Checkout  -> return ()
                      PrintCur  -> do
                          ls <- cdLines
-                         {-g  <- L.use graph-}
                          _  <- (liftIO . putStrLn) (unlines ls)
                          return ()
 

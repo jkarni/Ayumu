@@ -49,7 +49,7 @@ import Data.Graph.Inductive.Graph
     ( Node,
       LNode,
       LEdge,
-      Graph(labEdges, empty, labNodes, mkGraph),
+      Graph(labEdges, empty, labNodes, mkGraph, noNodes),
       gelem,
       nodes,
       DynGraph(..),
@@ -123,7 +123,7 @@ instance Monoid (Gr' a) where
 
 mkWalk            :: [a] -> Node -> [(LNode a, Edge)]
 mkWalk [    ] _   = [                                         ]
-mkWalk (x:[]) n   = ( (n, x), (n, n - 1, 0) ):mkWalk [] (n + 1)
+mkWalk (x:[]) n   = ( (n, x), (n, n - 1, 0) ):[               ]
 mkWalk (x:xs) n   = ( (n, x), (n, n + 1, 0) ):mkWalk xs (n + 1)
 
 -- | Given a walk w and two nodes of a graph g, connect the walk to g at those
@@ -186,8 +186,11 @@ getWalk' n bs gr =
     in mkGraph ns es
 
 -- | Make and connect walk
-addLinesr   :: DynGraph g => [a] -> Node -> Node -> Gate -> g a Gate -> g a Gate
-addLinesr   = join . (addWalk .) . mkWalk
+addLinesr   :: DynGraph g => [a] -> Node -> Node -> Node -> Gate -> g a Gate -> g a Gate
+addLinesr a f t s l g = 
+        let nses = mkWalk a s 
+        in addWalk nses f t l g
+            
 
 -- }}}
  --------------------------------------------------------------------------
@@ -245,7 +248,7 @@ cdLines   = do
      w <- curDoc'
      let ns = iterateSuc 0 w
      let ls = mapMaybe (lab w) ns
-     (liftIO . putStrLn) (show $ mconcat ls)
+     _ <- (liftIO . print) ls
      return ls
 
 
@@ -261,8 +264,9 @@ curDoc'   = do
 addLines         :: Show a => [a] -> Node -> Node -> AyDoc a ()
 addLines a f t   = do
     r  <- L.use (revision.revNo)
-    gr <- L.use graph
-    graph L..= addLinesr a f t r gr
+    n  <- L.use graph
+    let nnodes = noNodes n
+    _ <- graph L.<%= addLinesr a f t nnodes r
     return ()
 
 delLines       :: Node -> Node -> AyDoc a ()
@@ -292,11 +296,11 @@ iterateSuc x g
 initialDState :: AyGr String
 initialDState = AyGr {
     _graph      =   mkGraph [(0,"start"), (1,"end") ]
-                        [(0, 1, 0), (1, 2, 0)] ,
+                            [(0, 1, 0) ] ,
     _revision   =   DState {
           _revNo    =   0  ,
           _file     =   "" ,
-          _branches =  ( 
+          _branches =  (
                             [] ,
                             Branch {
                                 _name = "master" ,
