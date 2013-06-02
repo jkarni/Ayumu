@@ -6,6 +6,9 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DefaultSignatures #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 -- }}}
 -----------------------------------------------------------------------------
@@ -50,6 +53,8 @@ import Data.Graph.Inductive.Graph
       insEdge,
       insNode)
 import Data.Graph.Inductive.Tree ( Gr )
+import Data.Binary
+import GHC.Generics ( Generic, Rep )
 
 -- }}}
  --------------------------------------------------------------------------
@@ -95,7 +100,7 @@ zUntil (_, m, ts)    =  m:ts
 data Branch = Branch {
     _name :: String ,
     _commits :: Commits
-} deriving (Show, Read)
+} deriving (Show, Read, Generic)
 
 L.makeLenses ''Branch
 
@@ -201,13 +206,16 @@ data DState   = DState {
     _revNo     :: Gate ,                           -- ^ latest rev1
     _file      :: FilePath ,                       -- ^ file we're working on
     _branches  :: Branches                         -- ^ A zipper of branches
-} deriving (Show, Read)
-
+} deriving (Show, Read, Generic)
+instance Binary Branch
+instance Binary DState
 
 data AyGr a = AyGr {
     _graph    :: Gr a Gate ,                     -- ^ the graph
     _revision :: DState                          -- ^ extra state data
-} deriving (Show)
+} deriving (Show, Generic)
+
+
 
 L.makeLenses ''AyGr
 L.makeLenses ''DState
