@@ -34,11 +34,12 @@ commit' :: AyDoc String ()
 commit' = do
         f <- L.use (revision.file)
         fs <- liftM lines $ liftIO $ readFile f
-
+        cur <- cdLines
+        -- Create a new branch and commit. Switch to it. This happens after
+        -- cdLines to prevent accidentally changing the diff.
         r <- revision.revNo L.<+= 1
         _ <- (revision.branches.L._2.commits) L.<%= zInsert r
-
-        cur <- cdLines
+        -- Add diff
         _ <- addDiff (getGroupedDiff (cur) ("start":fs ++ ["end"]))
         return ()
 
@@ -71,7 +72,7 @@ addDiff' n ds     =
            (Just a, Nothing)  -> delLines n (jnext a)    << iter (jnext a)
            (Nothing, Just b)  -> addLines b n (n + 1)    << iter (n + 1)
            (Nothing, Nothing) -> iter (n + 1)
-            
+
  ---}}}
 
  --------------------------------------------------------------------------
