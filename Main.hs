@@ -23,13 +23,17 @@ module Main where
 
 import Ayumu.AyDoc
 import Ayumu.AyDiff
+import Ayumu.Init
 import Ayumu.Storage.Common
 import Ayumu.Storage.FS
 import Control.Monad.IO.Class ( MonadIO(liftIO) )
 import Control.Monad.State ( runStateT )
-import Control.Monad ( void )
-import Options.Applicative
+import Control.Monad ( void, forM_, forM )
 import Control.Applicative
+import System.Directory
+import System.Posix.Files
+import Options.Applicative
+import Prelude hiding ( init )
 
 -- }}}
  --------------------------------------------------------------------------
@@ -43,14 +47,14 @@ mainopts = execParser parseopts >>= entrypoint
     where
      parseopts = info (helper <*> opts)
         ( fullDesc
-        <> progDesc "File version control"
-        <> header "ayumu - flexible version control")
+        <> header "Ayumu -  A flexible version control system")
 
 entrypoint          :: Opts -> IO ()
 entrypoint (Opts a) = case a of
-    (Commit (CommitOptions b)) -> return ()
-    (Checkout (CheckoutOptions a b)) -> return ()
-    (Init (InitOptions a)) -> return ()
+    (Commit o)   -> return ()
+    (Checkout o) -> return ()
+    (Init o)     -> void $ init o
+
 
 {-main = do-}
           {-putStrLn "Welcome."-}
@@ -62,10 +66,33 @@ entrypoint (Opts a) = case a of
 
 -- }}}
  --------------------------------------------------------------------------
+ -- Command paths {{{
+ --------------------------------------------------------------------------
+
+init    ::  InitOptions -> IO ()
+init i  =  do 
+              createRepository 
+              cwd <- getCurrentDirectory
+              touchFile (cwd ++ "/.ay/data/" ++ ( inputfile i ))
+
+
+commit     :: CommitOptions -> IO ()
+commit _   = do 
+    cdw <- getCurrentDirectory
+    fs <- getDirectoryContents cdw
+    conts <- forM fs fromFile
+    mapM_ (runStateT commit') conts
+    return ()
+
+
+
+ --  }}}
+ --------------------------------------------------------------------------
  -- Optparsing {{{
  --------------------------------------------------------------------------
 
 
+-- Parsers {{{
 
 opts :: Parser Opts
 opts = Opts
@@ -107,7 +134,7 @@ checkoutOpts = (Checkout .) . CheckoutOptions
         <> short 'c'
         <> metavar "COMMIT#"
         <> help "Checkout COMMIT#")
-
+-- }}}
 -- Types {{{
 
 data Opts = Opts {
@@ -127,6 +154,7 @@ data InitOptions = InitOptions {
 data CommitOptions = CommitOptions {
     printDiff :: Bool
 } deriving (Show, Read)
+
 data CheckoutOptions = CheckoutOptions {
     branch :: String ,
     commitNo :: Int
