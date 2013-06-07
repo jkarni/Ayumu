@@ -26,12 +26,15 @@ import Ayumu.AyDiff
 import Ayumu.Init
 import Ayumu.Storage.Common
 import Ayumu.Storage.FS
+import Control.Arrow
 import Control.Monad.IO.Class ( MonadIO(liftIO) )
-import Control.Monad.State ( runStateT )
-import Control.Monad ( void, forM_, forM )
+import Control.Monad.State ( runStateT, execStateT )
+import Control.Monad ( void, forM_, forM, unless, liftM )
 import Control.Applicative
+import Data.Maybe ( isNothing, fromJust )
 import System.Directory
 import System.Posix.Files
+import System.FilePath
 import Options.Applicative
 import Prelude hiding ( init )
 
@@ -51,9 +54,10 @@ mainopts = execParser parseopts >>= entrypoint
 
 entrypoint          :: Opts -> IO ()
 entrypoint (Opts a) = case a of
-    (Commit o)   -> return ()
+    (Commit o)   -> void $ commit o
     (Checkout o) -> return ()
     (Init o)     -> void $ init o
+    (Diff o)       -> void $ diff
 
 
 {-main = do-}
@@ -73,17 +77,36 @@ init    ::  InitOptions -> IO ()
 init i  =  do 
               createRepository 
               cwd <- getCurrentDirectory
-              touchFile (cwd ++ "/.ay/data/" ++ ( inputfile i ))
+              let f = cwd ++ "/.ay/data/" ++ inputfile i
+              ex <- doesFileExist f
+              unless ex $ toFile f (initial $ cwd </> inputfile i)
 
 
 commit     :: CommitOptions -> IO ()
 commit _   = do 
-    cdw <- getCurrentDirectory
-    fs <- getDirectoryContents cdw
-    conts <- forM fs fromFile
-    mapM_ (runStateT commit') conts
-    return ()
+    cdw <- getRepository
+    unless (isNothing cdw) $ do
+        let datad = fromJust cdw </> "data"
+        fs <- getDirectoryContents datad
+        let goodfs = map (datad </>) $ filter (`notElem` [".", ".."]) fs
+        conts <- forM goodfs fromFile :: IO [AyGr String]
+        {-x <- execStateT commit' (head conts)-}
+        let acs = [second (execStateT commit') c | c <- zip goodfs conts ]
+        forM_ acs (\y -> do
+                 new <- snd y
+                 toFile (fst y) new
+                 )
+        return ()
 
+diff      :: IO ()
+diff      = do
+    cdw <- getRepository
+    unless (isNothing cdw) $ do
+        let datad = fromJust cdw </> "data"
+        fs <- getDirectoryContents datad
+        let goodfs = map (datad </>) $ filter (`notElem` [".", ".."]) fs
+        conts <- forM goodfs fromFile :: IO [AyGr String]
+        forM_ conts  (execStateT diff') 
 
 
  --  }}}
@@ -103,6 +126,8 @@ opts = Opts
                           (progDesc "Add and commit current worktree"))
     <> command "checkout" (info checkoutOpts
                           (progDesc "Checkout a branch or commit"))
+    <> command "diff"     (info diffOpts
+                          (progDesc "Show diff between worktree and head"))
     )
 
 
@@ -134,6 +159,14 @@ checkoutOpts = (Checkout .) . CheckoutOptions
         <> short 'c'
         <> metavar "COMMIT#"
         <> help "Checkout COMMIT#")
+         
+diffOpts :: Parser Command
+diffOpts = Diff
+    <$> switch 
+        ( long "color"
+        <> help "Color diff"
+        )
+ 
 -- }}}
 -- Types {{{
 
@@ -144,7 +177,8 @@ data Opts = Opts {
 data Command =
     Init InitOptions            |
     Commit CommitOptions        |
-    Checkout CheckoutOptions
+    Checkout CheckoutOptions    |
+    Diff Bool
     deriving (Show, Read)
 
 data InitOptions = InitOptions {
@@ -158,6 +192,10 @@ data CommitOptions = CommitOptions {
 data CheckoutOptions = CheckoutOptions {
     branch :: String ,
     commitNo :: Int
+} deriving (Show, Read)
+
+data DiffOptions = DiffOptions {
+    color :: Bool
 } deriving (Show, Read)
 -- }}}
 

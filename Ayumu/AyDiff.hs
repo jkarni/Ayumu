@@ -20,6 +20,7 @@ import Control.Monad.IO.Class ( MonadIO(liftIO) )
 import Control.Monad ( liftM, liftM2 )
 import qualified Control.Lens as L
 import Data.Algorithm.Diff ( Diff( First, Second, Both), getGroupedDiff  )
+import Data.Algorithm.DiffOutput
 import Data.Graph.Inductive.Graph ( Node )
 import Data.Maybe ( listToMaybe )
 import Ayumu.AyDoc
@@ -40,9 +41,17 @@ commit' = do
         r <- revision.revNo L.<+= 1
         _ <- (revision.branches.L._2.commits) L.<%= zInsert r
         -- Add diff
-        _ <- addDiff (getGroupedDiff (cur) ("start":fs ++ ["end"]))
+        _ <- addDiff (getGroupedDiff cur ("start":fs ++ ["end"]))
         return ()
 
+diff'   :: AyDoc String ()
+diff'   =  do
+        f <- L.use (revision.file)
+        fs <- liftM lines $ liftIO $ readFile f
+        cur <- cdLines
+        let dfs = (getGroupedDiff cur ("start":fs ++ ["end"]))
+        liftIO $ putStrLn $ ppDiff dfs
+        return ()
  --}}}
  --------------------------------------------------------------------------
  -- Internal {{{

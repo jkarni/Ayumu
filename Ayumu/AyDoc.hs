@@ -240,7 +240,6 @@ cdLines   = do
      w <- curDoc'
      let ns = iterateSuc 0 w
      let ls = mapMaybe (lab w) ns
-     _ <- (liftIO . print) ls
      return ls
 
 
